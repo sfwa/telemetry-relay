@@ -90,7 +90,7 @@ class ImageHandler(tornado.web.RequestHandler):
         if not session.isalpha():
             raise tornado.web.HTTPError(400)
 
-        if not name.startswith("img") and name != "all":
+        if not name.startswith("img") and name not in ("all", "html"):
             raise tornado.web.HTTPError(400)
 
         if name == "all":
@@ -101,7 +101,27 @@ class ImageHandler(tornado.web.RequestHandler):
 
             self.set_header("Content-Type", "application/json")
 
-            return json.dumps(msg)
+            self.finish(json.dumps(msg))
+        elif name == "html":
+            body = """<!doctype html5>
+                <html>
+                    <head>
+                        <meta charset=utf-8>
+                        <title>{0} images</title>
+                    </head>
+                    <body>
+                        {1}
+                    </body>
+                </html>"""
+
+            content = []
+            for f in os.listdir("/tmp/uploads/"):
+                s, _, n = f.partition("-")
+                content.append("<img src=\"/vQivxdjcFcUH34mLAEcfm77varwTmAA8/{0}/{1}\" width=640 height=480>".format(s, n))
+
+            self.set_header("Content-Type", "text/html")
+
+            self.finish(body.format(len(content), "".join(content)))
         else:
             fname = os.path.join("/tmp/uploads", session + "-" + name)
 
@@ -111,7 +131,7 @@ class ImageHandler(tornado.web.RequestHandler):
             self.set_header("Cache-Control", "public, max-age=86400")
 
             with open(fname, "r") as f:
-                return f.read()
+                self.finish(f.read())
 
     def post(self, *args, **kwargs):
         session = args[0]
