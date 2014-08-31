@@ -10,6 +10,8 @@ import tornado.httpserver
 
 DESTINATIONS = set()
 SOURCES = set()
+MESSAGE_HISTORY = list()
+TELEMETRY_PACKET = None
 
 
 class TimeoutWebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -34,19 +36,30 @@ class TimeoutWebSocketHandler(tornado.websocket.WebSocketHandler):
 
 class RelayDestinationHandler(TimeoutWebSocketHandler):
     def open(self):
+        global DESTINATIONS, MESSAGE_HISTORY
+
         log.info("RelayDestinationHandler.open()")
 
         DESTINATIONS.add(self)
+        for msg in MESSAGE_HISTORY:
+            self.write_message(msg)
 
     def on_message(self, message):
+        global TELEMETRY_PACKET
+
         log.info(
             "RelayDestinationHandler.on_message({0})".format(repr(message)))
 
         self.reset_timeout()
-        # Nothing else to do here -- destinations don't have any useful
-        # information at this point
+        # If the message looks like a telemetry packet, keep track of it
+        # to send to the relay sources
+        if message[0] == "\x00" and message[-1] == "\x00":
+            TELEMETRY_PACKET = message
+
 
     def on_close(self):
+        global DESTINATIONS
+
         log.info("RelayDestinationHandler.close()")
 
         DESTINATIONS.remove(self)
@@ -57,23 +70,30 @@ class RelayDestinationHandler(TimeoutWebSocketHandler):
 
 class RelaySourceHandler(TimeoutWebSocketHandler):
     def open(self):
+        global SOURCES
+
         log.info("RelaySourceHandler.open()")
 
         SOURCES.add(self)
 
     def on_message(self, message):
+        global MESSAGE_HISTORY, DESTINATIONS, TELEMETRY_PACKET
+
         log.info("RelaySourceHandler.on_message({0})".format(repr(message)))
 
         self.reset_timeout()
         # Relay the message to all connected destinations
         for dest in DESTINATIONS:
             dest.write_message(message)
+        MESSAGE_HISTORY.append(message)
 
         # Acknowledge the message so the receiving end can determine it's
         # still connected
-        self.write_message("ok")
+        self.write_message(TELEMETRY_PACKET or "ok")
 
     def on_close(self):
+        global SOURCES
+
         log.info("RelaySourceHandler.close()")
 
         SOURCES.remove(self)
@@ -87,7 +107,7 @@ class ImageHandler(tornado.web.RequestHandler):
         session = args[0]
         name = args[1]
 
-        if not session.isalpha():
+        if not session.isalnum():
             raise tornado.web.HTTPError(400)
 
         if not name.startswith("img") and name not in ("all", "html"):
@@ -137,7 +157,7 @@ class ImageHandler(tornado.web.RequestHandler):
         session = args[0]
         name = args[1]
 
-        if not session.isalpha():
+        if not session.isalnum():
             raise tornado.web.HTTPError(400)
 
         if not name.startswith("img"):
