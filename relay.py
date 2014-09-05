@@ -40,9 +40,12 @@ class RelayDestinationHandler(TimeoutWebSocketHandler):
 
         log.info("RelayDestinationHandler.open()")
 
+        self.reset_timeout()
+
         DESTINATIONS.add(self)
         for msg in MESSAGE_HISTORY:
-            self.write_message(msg)
+            if msg:
+                self.write_message(msg)
 
     def on_message(self, message):
         global TELEMETRY_PACKET
@@ -89,7 +92,7 @@ class RelaySourceHandler(TimeoutWebSocketHandler):
 
         # Acknowledge the message so the receiving end can determine it's
         # still connected
-        self.write_message(TELEMETRY_PACKET or "ok")
+        self.write_message(TELEMETRY_PACKET or "ok", binary=True)
 
     def on_close(self):
         global SOURCES
